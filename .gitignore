@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+*.onnx
+*.pt
+*.pth
+logs/
+wandb/
+.vscode/
+.idea/
+*.swp
+.omc/
