@@ -244,9 +244,10 @@ class WheeledLLCEnvCfg(DirectRLEnvCfg):
     # ── Environment parameters ──
     decimation: int = 4                     # physics steps per policy step (0.005 * 4 = 0.02s = 50Hz)
     episode_length_s: float = 10.0          # [stated] Table S2
-    # 56D proprio + num_rays height scan. Actual dim set at runtime after height_scanner init.
-    # proprio: lin_vel(3) + ang_vel(3) + gravity(3) + leg_pos(12) + leg_vel(12) + wheel_vel(4) + prev_act(16) + cmd(3) = 56
-    observation_space: int = 56
+    # 53D proprio + num_rays height scan. Actual dim depends on height_scanner grid.
+    # shared proprio: ang_vel(3) + gravity(3) + leg_pos(12) + leg_vel(12) + wheel_vel(4) + prev_act(16) + cmd(3) = 53
+    # NOTE: base_lin_vel is NOT in shared obs — it's privileged (teacher only).
+    observation_space: int = 53
     action_space: int = 16                  # 12 leg joints + 4 wheel velocities
     state_space: int = 0                    # not used in teacher training
 

@@ -63,10 +63,11 @@ class WheeledLLCEnv(DirectRLEnv):
         joint_limits = self._robot.data.joint_pos_limits
         if joint_limits.dim() == 3:
             joint_limits = joint_limits[0]
-        # Apply 95% soft limits on leg joints
+        # Apply 95% soft limits on leg joints (tighten by 5% of range from each side)
         self._soft_joint_limits = joint_limits[:12].clone()
-        self._soft_joint_limits[:, 0] *= 0.95  # lower
-        self._soft_joint_limits[:, 1] *= 0.95  # upper
+        range_ = joint_limits[:12, 1] - joint_limits[:12, 0]
+        self._soft_joint_limits[:, 0] = joint_limits[:12, 0] + 0.05 * range_
+        self._soft_joint_limits[:, 1] = joint_limits[:12, 1] - 0.05 * range_
 
         # ── Terminated flag ──
         self._terminated = torch.zeros(n, dtype=torch.bool, device=dev)
@@ -155,42 +156,59 @@ class WheeledLLCEnv(DirectRLEnv):
     # ─────────────────────────────────────────────────────────────────────
 
     def _get_observations(self) -> dict:
-        # Height scan from RayCaster
+        """Build observation dict following arXiv:2405.01792 Teacher-Student split.
+
+        Observation groups (paper Sec. "Locomotion controller" + Supplementary):
+
+        "policy" (shared, 53D + height_scan):
+            Student-accessible signals. On real robot: IMU + encoders + elevation map.
+            Teacher also sees these (noiseless). Student sees noisy versions.
+
+        "teacher_privileged" (shared + 25D privileged):
+            Teacher-only ground truth: base velocity, contacts, terrain props.
+            Student must estimate these implicitly via RNN temporal context.
+        """
+
+        # ── Height scan from RayCaster ──
         heights = (
             self._height_scanner.data.pos_w[:, 2:3]
             - self._height_scanner.data.ray_hits_w[..., 2]
         )  # (N, num_rays) relative height
 
-        # Proprioceptive observations (56D)
-        # Teacher uses ground-truth base velocity; student will estimate via RNN.
-        obs_proprio = torch.cat([
-            self._robot.data.root_lin_vel_b,                                    # 3  — body linear velocity (privileged for student)
-            self._robot.data.root_ang_vel_b,                                    # 3  — body angular velocity (IMU gyro)
-            self._robot.data.projected_gravity_b,                               # 3  — gravity in body frame (IMU derived)
-            self._robot.data.joint_pos[:, :12] - self._robot.data.default_joint_pos[:, :12],  # 12 — leg joint pos offset
+        # ── Shared proprioceptive (53D) — accessible to BOTH teacher and student ──
+        # On real robot: IMU (gyro + accel→gravity) + joint encoders
+        # Note: base_lin_vel is NOT here — it's privileged (student uses RNN to estimate)
+        obs_shared = torch.cat([
+            self._robot.data.root_ang_vel_b,                                    # 3  — IMU gyroscope
+            self._robot.data.projected_gravity_b,                               # 3  — IMU accelerometer → gravity direction
+            self._robot.data.joint_pos[:, :12] - self._robot.data.default_joint_pos[:, :12],  # 12 — leg joint position offsets
             self._robot.data.joint_vel[:, :12] * 0.05,                          # 12 — leg joint velocities (scaled)
             self._robot.data.joint_vel[:, 12:16] * 0.1,                         # 4  — wheel joint velocities (scaled)
-            self._prev_actions,                                                  # 16 — previous actions
-            self._velocity_commands,                                             # 3  — velocity command
-        ], dim=-1)  # Total: 3+3+3+12+12+4+16+3 = 56D
+            self._prev_actions,                                                  # 16 — previous actions (all 16 DOF)
+            self._velocity_commands,                                             # 3  — velocity command [vx, vy, yaw]
+        ], dim=-1)  # Total: 3+3+12+12+4+16+3 = 53D
 
-        # Policy obs = proprio + height scan (teacher gets noiseless, student gets noisy)
-        obs_policy = torch.cat([obs_proprio, heights], dim=-1)  # 56 + num_rays
+        # ── Policy obs = shared proprio + height scan ──
+        obs_policy = torch.cat([obs_shared, heights], dim=-1)  # 53 + num_rays
 
-        # Privileged observations (teacher only): contact ground truth
+        # ── Privileged observations (teacher ONLY, 25D) ──
+        # Paper: "velocity and acceleration, terrain properties, noiseless exteroceptive"
         contact_forces = self._contact_sensor.data.net_forces_w_history[:, 0, self._foot_cs_ids, :]
         foot_contact = (torch.norm(contact_forces, dim=-1) > 1.0).float()  # (N, 4)
 
         obs_privileged = torch.cat([
+            self._robot.data.root_lin_vel_b,                                    # 3  — body linear velocity (key privileged signal)
             self._robot.data.root_lin_vel_w,                                    # 3  — world linear velocity
             self._robot.data.root_ang_vel_w,                                    # 3  — world angular velocity
-            foot_contact,                                                        # 4  — binary contact states
-            contact_forces.reshape(self.num_envs, -1),                           # 12 — 3D contact forces
-        ], dim=-1)  # 22D privileged-only
+            foot_contact,                                                        # 4  — binary foot contact states
+            contact_forces.reshape(self.num_envs, -1),                           # 12 — 3D contact forces per foot
+            # TODO: terrain friction/restitution (3D) — requires domain randomization state query
+            # TODO: terrain surface normal (3D) — requires terrain mesh query at robot position
+        ], dim=-1)  # 25D (will be 31D with terrain props + normal)
 
         return {
-            "policy": obs_policy,
-            "teacher_privileged": torch.cat([obs_policy, obs_privileged], dim=-1),
+            "policy": obs_policy,                                                # student input
+            "teacher_privileged": torch.cat([obs_policy, obs_privileged], dim=-1),  # teacher input
         }
 
     # ─────────────────────────────────────────────────────────────────────
@@ -274,10 +292,8 @@ class WheeledLLCEnv(DirectRLEnv):
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         base_pos = self._robot.data.root_pos_w
-        base_quat = self._robot.data.root_quat_w
 
-        # Extract pitch and roll from quaternion
-        # Simplified: use projected gravity to check orientation
+        # Use projected gravity to check orientation
         grav = self._robot.data.projected_gravity_b
         pitch = torch.atan2(grav[:, 0], grav[:, 2])
         roll = torch.atan2(grav[:, 1], grav[:, 2])
