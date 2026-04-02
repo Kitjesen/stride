@@ -256,7 +256,8 @@ class WheeledLLCEnvCfg(DirectRLEnvCfg):
     action_scale_wheels: float = 10.0       # wheel velocity scale (rad/s)
 
     # ── Velocity command ranges (m/s, rad/s) ──
-    cmd_vx_range: tuple[float, float] = (-2.5, 2.5)
+    # Conservative for from-scratch training; paper uses ±2.5 but needs curriculum
+    cmd_vx_range: tuple[float, float] = (-1.5, 1.5)
     cmd_vy_range: tuple[float, float] = (-1.2, 1.2)
     cmd_yaw_range: tuple[float, float] = (-1.5, 1.5)
     cmd_zero_prob: float = 0.2              # probability of zero command

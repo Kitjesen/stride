@@ -66,7 +66,7 @@ class StrideRewardWeights:
     joint_torques_wheel_l2: float = 0.0
     joint_acc_l2: float = -1e-7                 # Eq. 20: velocity + acceleration
     joint_acc_wheel_l2: float = 0.0
-    action_rate_l2: float = -0.03               # Eq. 21: action smoothness
+    action_rate_l2: float = -0.08               # smoother actions for softer contact               # Eq. 21: action smoothness
 
     # ── Paper constraints (Eq. 22-24) ──
     joint_pos_limits: float = -2.0              # Eq. 22-23: soft knee limits
@@ -81,8 +81,8 @@ class StrideRewardWeights:
     joint_pos_penalty: float = -1.0
     joint_mirror: float = -0.05
     feet_stumble: float = -5.0
-    foot_impact_velocity: float = -0.6
-    contact_force_threshold: float = -0.01
+    foot_impact_velocity: float = -2.0     # 4x from -0.5: softer landing
+    contact_force_threshold: float = -0.01  # 3x from -0.003: reduce GRF
     joint_power: float = -2e-5
 
     # ── Zero (disabled) ──
@@ -117,9 +117,11 @@ class StrideCommandParams:
     - vy: [-1.2, 1.2] m/s
     - ωz: [-1.5, 1.5] rad/s
     """
-    lin_vel_x: tuple = (-2.5, 2.5)
-    lin_vel_y: tuple = (-1.2, 1.2)
-    ang_vel_z: tuple = (-1.5, 1.5)
+    # Start conservative, increase after terrain curriculum stabilizes.
+    # Paper: vx±2.5, vy±1.2, wz±1.5 — but too aggressive for from-scratch training.
+    lin_vel_x: tuple = (-1.5, 1.5)
+    lin_vel_y: tuple = (-0.8, 0.8)
+    ang_vel_z: tuple = (-1.0, 1.0)
 
 
 @configclass
