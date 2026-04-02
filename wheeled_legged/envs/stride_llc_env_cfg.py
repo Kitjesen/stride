@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Inovxio
 # SPDX-License-Identifier: Apache-2.0
-"""B2W LLC Environment Config — arXiv:2405.01792 on robot_lab infrastructure.
+"""Stride LLC Environment Config — arXiv:2405.01792 on robot_lab infrastructure.
 
 Extends the existing ThunderHistRoughEnvCfg to use paper-specific
 reward weights and velocity command ranges while reusing the
@@ -11,7 +11,7 @@ Designed to run on the BSRL server where robot_lab is installed:
 
 Usage on server:
     python -m isaaclab.app.runner \
-        --task ThunderB2W-Rough-v0 \
+        --task ThunderStride-Rough-v0 \
         --num_envs 4096 --max_iterations 30000
 """
 
@@ -39,7 +39,7 @@ except ImportError:
 # ============================================================================
 
 @configclass
-class B2WRewardWeights:
+class StrideRewardWeights:
     """Reward weights aligned with arXiv:2405.01792.
 
     Replaces ThunderHistRoughRewardWeights with paper-faithful values.
@@ -109,7 +109,7 @@ class B2WRewardWeights:
 
 
 @configclass
-class B2WCommandParams:
+class StrideCommandParams:
     """Velocity command ranges from arXiv:2405.01792.
 
     Paper uses wider range than thunder-him baseline:
@@ -123,7 +123,7 @@ class B2WCommandParams:
 
 
 @configclass
-class B2WActuatorGains:
+class StrideActuatorGains:
     """Actuator PD gains — same as thunder-him but with tuned wheel damping."""
     hip_stiffness: float = 70.0
     hip_damping: float = 15.0
@@ -137,16 +137,16 @@ class B2WActuatorGains:
 
 if _HAS_THUNDER_HIM:
     @configclass
-    class ThunderB2WRoughEnvCfg(ThunderHistRoughEnvCfg):
-        """Thunder B2W (arXiv:2405.01792) environment on robot_lab.
+    class ThunderStrideRoughEnvCfg(ThunderHistRoughEnvCfg):
+        """Thunder Stride (arXiv:2405.01792) environment on robot_lab.
 
         Inherits all scene/sensor/terrain from ThunderHistRoughEnvCfg,
         replaces reward weights and command ranges with paper values.
         """
 
-        reward_weights: B2WRewardWeights = B2WRewardWeights()
-        command_params: B2WCommandParams = B2WCommandParams()
-        actuator_gains: B2WActuatorGains = B2WActuatorGains()
+        reward_weights: StrideRewardWeights = StrideRewardWeights()
+        command_params: StrideCommandParams = StrideCommandParams()
+        actuator_gains: StrideActuatorGains = StrideActuatorGains()
 
         def __post_init__(self):
             super().__post_init__()
@@ -174,12 +174,12 @@ if _HAS_THUNDER_HIM:
 
 # When robot_lab is not available (local development), the standalone
 # DirectRLEnv config in llc_env_cfg.py provides equivalent functionality.
-# Use ThunderB2WRoughEnvCfg on the server, llc_env_cfg.WheeledLLCEnvCfg locally.
+# Use ThunderStrideRoughEnvCfg on the server, llc_env_cfg.WheeledLLCEnvCfg locally.
 
 STANDALONE_CONFIG_NOTE = """
 Server training:
   cd /root/autodl-tmp/thunder2/
-  python train_him.py --task ThunderB2W-Rough --num_envs 4096
+  python train_him.py --task ThunderStride-Rough --num_envs 4096
 
 Local development (no Isaac Lab):
   Use wheeled_legged.envs.llc_env_cfg.WheeledLLCEnvCfg

@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Inovxio
 # SPDX-License-Identifier: Apache-2.0
-"""B2W PPO Runner Config — arXiv:2405.01792 on robot_lab infrastructure.
+"""Stride PPO Runner Config — arXiv:2405.01792 on robot_lab infrastructure.
 
 Based on ThunderHistRoughPPORunnerCfg with paper-specific hyperparameters.
 
@@ -20,8 +20,8 @@ from isaaclab_rl.rsl_rl import (
 
 
 @configclass
-class ThunderB2WPPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    """PPO training for B2W LLC teacher on robot_lab.
+class ThunderStridePPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    """PPO training for Stride LLC teacher on robot_lab.
 
     Key differences from ThunderHistRoughPPORunnerCfg:
     - num_steps_per_env: 24 (not 200) — matches paper batch structure
@@ -33,7 +33,7 @@ class ThunderB2WPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env: int = 24
     max_iterations: int = 30_000
     save_interval: int = 500
-    experiment_name: str = "thunder_b2w_rough"
+    experiment_name: str = "thunder_stride_rough"
     class_name: str = "OnPolicyRunner"
 
     # Observation groups: same structure as thunder-him
@@ -70,7 +70,7 @@ class ThunderB2WPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 
 
 @configclass
-class ThunderB2WFlatPPORunnerCfg(ThunderB2WPPORunnerCfg):
+class ThunderStrideFlatPPORunnerCfg(ThunderStridePPORunnerCfg):
     """Flat terrain variant — for initial debugging."""
-    experiment_name: str = "thunder_b2w_flat"
+    experiment_name: str = "thunder_stride_flat"
     max_iterations: int = 10_000
