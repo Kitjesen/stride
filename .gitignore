@@ -14,3 +14,5 @@ wandb/
 .idea/
 *.swp
 .omc/
+!exports/*.onnx
+!exports/*.pt
