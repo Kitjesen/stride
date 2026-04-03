@@ -66,7 +66,7 @@ class StrideRewardWeights:
     joint_torques_wheel_l2: float = 0.0
     joint_acc_l2: float = -1e-7                 # Eq. 20: velocity + acceleration
     joint_acc_wheel_l2: float = 0.0
-    action_rate_l2: float = -0.03               # keep mild early; increase after convergence               # Eq. 21: action smoothness
+    action_rate_l2: float = -0.01               # keep mild; too aggressive blocks exploration               # Eq. 21: action smoothness
 
     # ── Paper constraints (Eq. 22-24) ──
     joint_pos_limits: float = -2.0              # Eq. 22-23: soft knee limits
