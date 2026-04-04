@@ -21,10 +21,12 @@ class LLCTeacherPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     """PPO training for LLC teacher policy.
 
     Teacher receives privileged observations:
-      - Proprioceptive: IMU(6) + joint angles(12) + joint vel(12) + prev actions(16) + cmd(3) = 49D
-      - Privileged: base vel(3) + accel(3) + terrain normal(3) + contacts(4) + contact forces(12)
-                    + terrain props(5) + gravity(3) + noiseless height scan(87) ≈ 120D
-      - Total teacher obs: ~170D
+      - Shared proprio: imu_gyro(3) + imu_accel(3) + leg_pos(12) + leg_vel(12)
+                       + wheel_vel(4) + prev_actions(16) + cmd(3) = 53D
+      - Height scan: ~187D (noiseless for teacher)
+      - Privileged: base_lin_vel(3) + gravity(3) + contacts(4) + contact_forces(12)
+                   + terrain_normals(12) + terrain_props(5) ≈ 39D
+      - Total teacher obs: 53 + 187 + 39 ≈ 279D
 
     Output: 16D = 12 joint position targets + 4 wheel velocity targets
 

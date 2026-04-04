@@ -245,8 +245,9 @@ class WheeledLLCEnvCfg(DirectRLEnvCfg):
     decimation: int = 4                     # physics steps per policy step (0.005 * 4 = 0.02s = 50Hz)
     episode_length_s: float = 10.0          # [stated] Table S2
     # 53D proprio + num_rays height scan. Actual dim depends on height_scanner grid.
-    # shared proprio: ang_vel(3) + gravity(3) + leg_pos(12) + leg_vel(12) + wheel_vel(4) + prev_act(16) + cmd(3) = 53
-    # NOTE: base_lin_vel is NOT in shared obs — it's privileged (teacher only).
+    # shared proprio: imu_gyro(3) + imu_accel(3) + leg_pos(12) + leg_vel(12) + wheel_vel(4) + prev_act(16) + cmd(3) = 53
+    # Paper: raw IMU measurements (linear acceleration + angular velocity) instead of projected gravity.
+    # NOTE: base_lin_vel is NOT in shared obs — it's privileged (student uses GRU to estimate).
     observation_space: int = 53
     action_space: int = 16                  # 12 leg joints + 4 wheel velocities
     state_space: int = 0                    # not used in teacher training

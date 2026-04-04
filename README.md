@@ -89,23 +89,34 @@ source/robot_lab/robot_lab/tasks/.../thunder_hist/stride_env_cfg.py
 
 ## Paper Observation Structure
 
-### LLC Teacher (privileged)
+### LLC Shared Proprioception (53D)
+| Signal | Dim | Source | Note |
+|--------|-----|--------|------|
+| angular_velocity | 3 | IMU gyroscope | |
+| **linear_acceleration** | **3** | **IMU accelerometer** | **specific force, NOT projected gravity** |
+| leg_joint_pos | 12 | encoders | offset from default |
+| leg_joint_vel | 12 | encoders | scaled ×0.05 |
+| wheel_joint_vel | 4 | wheel encoders | scaled ×0.1 |
+| prev_actions | 16 | self | |
+| velocity_command | 3 | HLC / external | |
+
+Paper key design: *"we directly used IMU measurements consisting of linear acceleration
+and angular velocity"* — skips state estimator entirely, GRU learns implicit estimation.
+
+### LLC Teacher (privileged additions)
 | Signal | Dim | Source |
 |--------|-----|--------|
-| angular_velocity | 3 | IMU gyro |
-| projected_gravity | 3 | IMU accel |
-| leg_joint_pos | 12 | encoders |
-| leg_joint_vel | 12 | encoders |
-| wheel_joint_vel | 4 | wheel encoders |
-| prev_actions | 16 | self |
-| velocity_command | 3 | external |
-| height_scan | ~N | RayCaster |
-| **base_lin_vel** | **3** | **privileged** |
-| **foot_contacts** | **4** | **privileged** |
-| **contact_forces** | **12** | **privileged** |
+| height_scan (noiseless) | ~187 | RayCaster |
+| base_lin_vel | 3 | ground truth |
+| gravity_vector | 3 | ground truth orientation |
+| foot_contacts | 4 | contact sensor |
+| contact_forces | 12 | contact sensor (3D×4) |
+| terrain_normals | 12 | terrain mesh (3D×4 feet) |
+| terrain_properties | 5 | domain randomization state |
 
 ### LLC Student (deployment)
-Same as teacher minus privileged signals. GRU hidden state estimates velocity from IMU history.
+Shared proprio (53D) + noisy height scan (~187D). No privileged signals.
+GRU(hidden=512) estimates velocity/contact from IMU temporal history.
 
 ### HLC Navigator
 | Branch | Input | Processing |

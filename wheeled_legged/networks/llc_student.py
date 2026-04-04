@@ -6,11 +6,19 @@ The student policy uses a GRU to extract temporal features from
 noisy proprioceptive observations, replacing the teacher's access
 to privileged information (ground-truth velocity, contact states).
 
+Paper key design: raw IMU measurements (linear acceleration + angular velocity)
+instead of state-estimator outputs. The GRU implicitly learns to estimate
+base velocity and contact state from IMU temporal history.
+
+Input proprio (53D):
+  imu_gyro(3) + imu_accel(3) + leg_pos(12) + leg_vel(12)
+  + wheel_vel(4) + prev_actions(16) + cmd(3)
+
 Architecture:
   proprio_encoder: Linear(53, 64) -> ELU -> Linear(64, 32)
   height_encoder:  Linear(num_rays, 64) -> ELU -> Linear(64, 32)
   GRU:             input=64, hidden=512, 1 layer
-  actor_head:      Linear(512, 256) -> ELU -> Linear(256, 16) -> tanh
+  actor_head:      Linear(512, 256) -> ELU -> Linear(256, 128) -> ELU -> Linear(128, 16) -> tanh
 
 Training: DAgger (teacher frozen, student drives sim, MSE loss).
 """

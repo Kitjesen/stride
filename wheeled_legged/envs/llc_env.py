@@ -59,6 +59,9 @@ class WheeledLLCEnv(DirectRLEnv):
         # ── Joint velocity history for acceleration computation ──
         self._prev_joint_vel = torch.zeros(n, 12, device=dev)
 
+        # ── Root velocity history for IMU linear acceleration simulation ──
+        self._prev_root_lin_vel_b = torch.zeros(n, 3, device=dev)
+
         # ── Soft joint limits for knee constraints (Eq. 22-23) ──
         joint_limits = self._robot.data.joint_pos_limits
         if joint_limits.dim() == 3:
@@ -158,15 +161,17 @@ class WheeledLLCEnv(DirectRLEnv):
     def _get_observations(self) -> dict:
         """Build observation dict following arXiv:2405.01792 Teacher-Student split.
 
-        Observation groups (paper Sec. "Locomotion controller" + Supplementary):
+        Key paper design choice: raw IMU measurements (linear acceleration + angular
+        velocity) instead of state-estimator outputs. This avoids the need for a model-
+        based state estimator, which is harder for wheeled-legged robots.
 
         "policy" (shared, 53D + height_scan):
             Student-accessible signals. On real robot: IMU + encoders + elevation map.
             Teacher also sees these (noiseless). Student sees noisy versions.
 
-        "teacher_privileged" (shared + 25D privileged):
+        "teacher_privileged" (shared + privileged):
             Teacher-only ground truth: base velocity, contacts, terrain props.
-            Student must estimate these implicitly via RNN temporal context.
+            Student must estimate these implicitly via GRU temporal context.
         """
 
         # ── Height scan from RayCaster ──
@@ -175,12 +180,23 @@ class WheeledLLCEnv(DirectRLEnv):
             - self._height_scanner.data.ray_hits_w[..., 2]
         )  # (N, num_rays) relative height
 
+        # ── Simulated IMU linear acceleration (specific force in body frame) ──
+        # Paper: "we directly used IMU measurements consisting of linear acceleration
+        #         and angular velocity" — NOT projected gravity.
+        # Accelerometer measures: a_imu = body_acceleration - gravity_in_body_frame
+        # When stationary and upright: a_imu ≈ [0, 0, +9.81] (opposing gravity)
+        body_accel_b = (
+            self._robot.data.root_lin_vel_b - self._prev_root_lin_vel_b
+        ) / self.step_dt
+        imu_lin_accel = body_accel_b - self._robot.data.projected_gravity_b * 9.81
+        self._prev_root_lin_vel_b = self._robot.data.root_lin_vel_b.clone()
+
         # ── Shared proprioceptive (53D) — accessible to BOTH teacher and student ──
-        # On real robot: IMU (gyro + accel→gravity) + joint encoders
-        # Note: base_lin_vel is NOT here — it's privileged (student uses RNN to estimate)
+        # On real robot: IMU (accel + gyro) + joint encoders + velocity command
+        # Note: base_lin_vel is NOT here — it's privileged (student uses GRU to estimate)
         obs_shared = torch.cat([
             self._robot.data.root_ang_vel_b,                                    # 3  — IMU gyroscope
-            self._robot.data.projected_gravity_b,                               # 3  — IMU accelerometer → gravity direction
+            imu_lin_accel,                                                       # 3  — IMU accelerometer (specific force)
             self._robot.data.joint_pos[:, :12] - self._robot.data.default_joint_pos[:, :12],  # 12 — leg joint position offsets
             self._robot.data.joint_vel[:, :12] * 0.05,                          # 12 — leg joint velocities (scaled)
             self._robot.data.joint_vel[:, 12:16] * 0.1,                         # 4  — wheel joint velocities (scaled)
@@ -191,20 +207,20 @@ class WheeledLLCEnv(DirectRLEnv):
         # ── Policy obs = shared proprio + height scan ──
         obs_policy = torch.cat([obs_shared, heights], dim=-1)  # 53 + num_rays
 
-        # ── Privileged observations (teacher ONLY, 25D) ──
-        # Paper: "velocity and acceleration, terrain properties, noiseless exteroceptive"
+        # ── Privileged observations (teacher ONLY) ──
+        # Paper: "noiseless joint states, foot contact state, terrain normal at each
+        #         foot, foot contact force, robot velocity, and gravity vector"
         contact_forces = self._contact_sensor.data.net_forces_w_history[:, 0, self._foot_cs_ids, :]
         foot_contact = (torch.norm(contact_forces, dim=-1) > 1.0).float()  # (N, 4)
 
         obs_privileged = torch.cat([
             self._robot.data.root_lin_vel_b,                                    # 3  — body linear velocity (key privileged signal)
-            self._robot.data.root_lin_vel_w,                                    # 3  — world linear velocity
-            self._robot.data.root_ang_vel_w,                                    # 3  — world angular velocity
+            self._robot.data.projected_gravity_b,                               # 3  — noiseless gravity vector (privileged)
             foot_contact,                                                        # 4  — binary foot contact states
             contact_forces.reshape(self.num_envs, -1),                           # 12 — 3D contact forces per foot
-            # TODO: terrain friction/restitution (3D) — requires domain randomization state query
-            # TODO: terrain surface normal (3D) — requires terrain mesh query at robot position
-        ], dim=-1)  # 25D (will be 31D with terrain props + normal)
+            # TODO: terrain normal at each foot (12D) — requires terrain mesh query
+            # TODO: terrain friction/restitution (5D) — requires domain randomization state
+        ], dim=-1)  # 22D (will be ~39D with terrain normals + props)
 
         return {
             "policy": obs_policy,                                                # student input
@@ -337,6 +353,7 @@ class WheeledLLCEnv(DirectRLEnv):
         self._prev_actions[env_ids] = 0.0
         self._prev_prev_actions[env_ids] = 0.0
         self._prev_joint_vel[env_ids] = 0.0
+        self._prev_root_lin_vel_b[env_ids] = 0.0
 
         # Resample velocity commands
         self._resample_commands(env_ids)
